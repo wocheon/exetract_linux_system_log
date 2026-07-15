@@ -1,0 +1,30 @@
+project:
+  name: "incident-collector"
+  environment: "production"
+
+target:
+  os: "auto"
+  alias: "TARGET_001"
+
+collection:
+  start_time: ""
+  end_time: ""
+  timezone: "Asia/Seoul"
+  output_directory: "./output"
+  temporary_directory: ""
+  continue_on_error: true
+
+system_logs:
+  enabled: true
+  collect_journal: true
+
+log_paths:
+  include:
+    - "/var/log/syslog"
+    - "/var/log/auth.log"
+    - "/var/log/kern.log"
+
+output:
+  archive_format: "tar.gz"
+  include_manifest: true
+  include_checksums: true
