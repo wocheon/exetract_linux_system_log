@@ -14,6 +14,7 @@ src/incident_collector/
 ├── output.py          # manifest, tar.gz, checksum
 ├── safety.py          # 경로와 symlink 검증
 └── collectors/
+    ├── system.py      # 서버 정보 스냅샷
     ├── journal.py     # journalctl 수집
     └── files.py       # 지정 파일 복사
 ```
@@ -36,6 +37,7 @@ src/incident_collector/
 - Ubuntu 24.04 LTS
 - Python 3.10 이상
 - `journalctl` (journal 수집을 활성화한 경우)
+- Ubuntu 기본 명령인 `uname`, `lscpu`, `free`, `df`, `ps`
 
 ```bash
 python3 -m venv .venv
@@ -106,6 +108,14 @@ output/
 ├── incident-collection-TARGET_001-20260715T100000-20260715T110000.tar.gz
 └── incident-collection-TARGET_001-20260715T100000-20260715T110000.tar.gz.sha256
 ```
+
+archive 내부에는 다음 서버 정보 파일이 기본으로 포함됩니다.
+
+```text
+metadata/system-summary.txt
+```
+
+이 파일에는 OS와 kernel, CPU·메모리 사양, 디스크 사용량, CPU 및 메모리 기준 상위 15개 프로세스가 들어갑니다. 프로세스 command line과 사용자명은 수집하지 않습니다. 서버 정보는 지정한 로그 시간대의 과거 값이 아니라 수집기 실행 시점의 스냅샷이며, 일부 명령을 사용할 수 없으면 가능한 내용은 보존하고 manifest 상태를 `partial`로 기록합니다.
 
 checksum 검증:
 

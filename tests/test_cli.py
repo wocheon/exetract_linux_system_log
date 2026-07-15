@@ -6,6 +6,7 @@ from pathlib import Path
 
 from incident_collector.cli import main
 from incident_collector.os_detection import OSInfo
+from incident_collector.output import CollectionResult
 
 
 def test_cli_collects_temp_file_and_packages_it(tmp_path: Path, monkeypatch) -> None:
@@ -43,6 +44,14 @@ output:
         lambda: OSInfo("ubuntu", "24.04", "Ubuntu 24.04 LTS"),
     )
 
+    def fake_system_summary(os_info, staging):
+        destination = staging / "metadata/system-summary.txt"
+        destination.parent.mkdir(parents=True)
+        destination.write_text("system summary\n", encoding="utf-8")
+        return CollectionResult("system-summary", "success", output="metadata/system-summary.txt")
+
+    monkeypatch.setattr("incident_collector.cli.collect_system_summary", fake_system_summary)
+
     exit_code = main(["collect", "--config", str(config)])
 
     assert exit_code == 0
@@ -53,9 +62,11 @@ output:
         names = tar.getnames()
         manifest_name = next(name for name in names if name.endswith("/manifest.json"))
         assert any(name.endswith("/application.log") for name in names)
+        assert any(name.endswith("/metadata/system-summary.txt") for name in names)
         manifest_file = tar.extractfile(manifest_name)
         assert manifest_file is not None
         manifest = json.load(manifest_file)
         statuses = {item["name"]: item["status"] for item in manifest["collections"]}
+        assert statuses["system-summary"] == "success"
         assert statuses["journal-system"] == "skipped"
         assert statuses[f"file:{source.as_posix()}"] == "success"

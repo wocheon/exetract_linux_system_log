@@ -8,7 +8,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from .collectors import collect_files, collect_journal
+from .collectors import collect_files, collect_journal, collect_system_summary
 from .config import ConfigError, CollectorConfig, TimeRange, load_config, resolve_time_range
 from .os_detection import OSInfo, UnsupportedOSError, detect_ubuntu
 from .output import CollectionResult, PackagingError, create_archive, write_manifest
@@ -57,7 +57,7 @@ def _run_collection(config: CollectorConfig, time_range: TimeRange) -> int:
     with tempfile.TemporaryDirectory(prefix="incident-collector-", dir=temp_parent) as temporary:
         staging = Path(temporary) / "bundle"
         staging.mkdir()
-        results: list[CollectionResult] = []
+        results: list[CollectionResult] = [collect_system_summary(os_info, staging)]
 
         if config.collect_journal:
             results.append(collect_journal(time_range, staging))
