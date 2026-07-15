@@ -24,6 +24,17 @@ log_paths:
     - "/var/log/auth.log"
     - "/var/log/kern.log"
 
+prometheus:
+  enabled: false
+  base_url: "http://prometheus.example.internal:9090"
+  bearer_token_env: ""
+  verify_tls: true
+  timeout_seconds: 30
+  step_seconds: 60
+  rate_interval: "5m"
+  instance: "TARGET_HOST:9100"
+  max_points_per_query: 10000
+
 output:
   archive_format: "tar.gz"
   include_manifest: true

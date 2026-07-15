@@ -5,10 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import re
 from typing import Any
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
+
 
 class ConfigError(ValueError):
     """Raised when configuration cannot be used safely."""
@@ -19,6 +22,19 @@ class TimeRange:
     start: datetime
     end: datetime
     timezone: str
+
+
+@dataclass(frozen=True)
+class PrometheusConfig:
+    enabled: bool
+    base_url: str
+    bearer_token_env: str
+    verify_tls: bool
+    timeout_seconds: int
+    step_seconds: int
+    rate_interval: str
+    instance: str
+    max_points_per_query: int
 
 
 @dataclass(frozen=True)
@@ -33,6 +49,7 @@ class CollectorConfig:
     continue_on_error: bool
     collect_journal: bool
     log_paths: tuple[str, ...]
+    prometheus: PrometheusConfig
     include_manifest: bool
     include_checksums: bool
 
@@ -51,6 +68,52 @@ def _boolean(value: Any, key: str, default: bool) -> bool:
     if not isinstance(value, bool):
         raise ConfigError(f"'{key}' must be true or false")
     return value
+
+
+def _positive_integer(value: Any, key: str, default: int, maximum: int) -> int:
+    if value is None:
+        return default
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1 or value > maximum:
+        raise ConfigError(f"'{key}' must be an integer between 1 and {maximum}")
+    return value
+
+
+def _load_prometheus(raw: Any) -> PrometheusConfig:
+    values = _mapping(raw, "prometheus")
+    enabled = _boolean(values.get("enabled"), "prometheus.enabled", False)
+    base_url = str(values.get("base_url", "")).strip().rstrip("/")
+    token_env = str(values.get("bearer_token_env", "")).strip()
+    instance = str(values.get("instance", "")).strip()
+    rate_interval = str(values.get("rate_interval", "5m")).strip()
+
+    if enabled:
+        parsed_url = urlparse(base_url)
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            raise ConfigError("'prometheus.base_url' must be an absolute HTTP(S) URL")
+        if parsed_url.username or parsed_url.password or parsed_url.query or parsed_url.fragment:
+            raise ConfigError("'prometheus.base_url' must not contain credentials, query, or fragment")
+        if not instance or "\n" in instance or "\r" in instance:
+            raise ConfigError("'prometheus.instance' is required and must be one line")
+        if token_env and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", token_env):
+            raise ConfigError("'prometheus.bearer_token_env' must be a valid environment variable name")
+        if not re.fullmatch(r"[1-9][0-9]*(?:ms|s|m|h|d|w|y)", rate_interval):
+            raise ConfigError("'prometheus.rate_interval' must be a simple duration such as '5m'")
+
+    return PrometheusConfig(
+        enabled=enabled,
+        base_url=base_url,
+        bearer_token_env=token_env,
+        verify_tls=_boolean(values.get("verify_tls"), "prometheus.verify_tls", True),
+        timeout_seconds=_positive_integer(
+            values.get("timeout_seconds"), "prometheus.timeout_seconds", 30, 300
+        ),
+        step_seconds=_positive_integer(values.get("step_seconds"), "prometheus.step_seconds", 60, 86400),
+        rate_interval=rate_interval,
+        instance=instance,
+        max_points_per_query=_positive_integer(
+            values.get("max_points_per_query"), "prometheus.max_points_per_query", 10000, 100000
+        ),
+    )
 
 
 def _safe_config_path(value: str, key: str) -> Path:
@@ -77,6 +140,7 @@ def load_config(path: Path) -> CollectorConfig:
     collection = _mapping(raw.get("collection"), "collection")
     system_logs = _mapping(raw.get("system_logs"), "system_logs")
     log_paths = _mapping(raw.get("log_paths"), "log_paths")
+    prometheus = _load_prometheus(raw.get("prometheus"))
     output = _mapping(raw.get("output"), "output")
 
     includes = log_paths.get("include", [])
@@ -115,6 +179,7 @@ def load_config(path: Path) -> CollectorConfig:
             and _boolean(system_logs.get("collect_journal"), "system_logs.collect_journal", True)
         ),
         log_paths=tuple(includes),
+        prometheus=prometheus,
         include_manifest=_boolean(output.get("include_manifest"), "output.include_manifest", True),
         include_checksums=_boolean(output.get("include_checksums"), "output.include_checksums", True),
     )

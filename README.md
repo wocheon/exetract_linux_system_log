@@ -16,6 +16,7 @@ src/incident_collector/
 └── collectors/
     ├── system.py      # 서버 정보 스냅샷
     ├── journal.py     # journalctl 수집
+    ├── prometheus.py  # 지정 시간대 node_exporter 메트릭
     └── files.py       # 지정 파일 복사
 ```
 
@@ -66,9 +67,28 @@ log_paths:
   include:
     - "/var/log/syslog"
     - "/var/log/auth.log"
+
+prometheus:
+  enabled: true
+  base_url: "https://prometheus.example.internal:9090"
+  bearer_token_env: "PROMETHEUS_BEARER_TOKEN"
+  verify_tls: true
+  timeout_seconds: 30
+  step_seconds: 60
+  rate_interval: "5m"
+  instance: "TARGET_HOST:9100"
+  max_points_per_query: 10000
 ```
 
 설정 파일에 비밀번호, API token, private URL 등의 인증정보를 저장하지 마십시오. 읽기 권한이 없는 로그는 자동 권한 상승 없이 실패로 기록됩니다.
+
+Prometheus 인증이 필요하면 token을 환경변수로 전달합니다. 인증이 없다면 `bearer_token_env`를 빈 문자열로 둡니다.
+
+```bash
+export PROMETHEUS_BEARER_TOKEN="..."
+```
+
+Prometheus 수집기는 추가 HTTP 패키지 없이 Python 표준 라이브러리를 사용합니다. `instance`는 Prometheus의 실제 node_exporter `instance` label과 정확히 일치해야 합니다. 요청 point 수가 `max_points_per_query`를 넘으면 Prometheus에 요청하지 않으므로, 장기 범위에서는 `step_seconds`를 늘립니다.
 
 ## 실행
 
@@ -113,9 +133,13 @@ archive 내부에는 다음 서버 정보 파일이 기본으로 포함됩니다
 
 ```text
 metadata/system-summary.txt
+metrics/prometheus/metrics.json
+metrics/prometheus/metrics.csv
 ```
 
 이 파일에는 OS와 kernel, CPU·메모리 사양, 디스크 사용량, CPU 및 메모리 기준 상위 15개 프로세스가 들어갑니다. 프로세스 command line과 사용자명은 수집하지 않습니다. 서버 정보는 지정한 로그 시간대의 과거 값이 아니라 수집기 실행 시점의 스냅샷이며, 일부 명령을 사용할 수 없으면 가능한 내용은 보존하고 manifest 상태를 `partial`로 기록합니다.
+
+Prometheus가 활성화되면 CPU 사용률, 메모리 사용률, load average 1분 값을 로그와 동일한 `start`·`end` 범위로 수집합니다. `metrics.json`은 query와 API 응답을 보존하고, `metrics.csv`는 분석하기 쉬운 `metric,timestamp,value,labels` 형식입니다. CPU의 `rate(...[5m])` 값은 각 출력 시각 직전 5분 sample을 사용하므로 시작 시각의 계산에 그 이전 sample이 포함될 수 있습니다.
 
 checksum 검증:
 
@@ -151,5 +175,5 @@ pytest
 - kernel 및 systemd unit별 journal 수집
 - 로그인/command history 전용 수집기
 - 크기 제한, 디스크 여유 공간 사전 검증, archive 내부 checksum 목록
-- Prometheus, GCP, AWS 수집
+- 추가 node_exporter 메트릭과 GCP/AWS 수집
 - Debian/RHEL 계열 OS profile

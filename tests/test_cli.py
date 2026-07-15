@@ -68,5 +68,6 @@ output:
         manifest = json.load(manifest_file)
         statuses = {item["name"]: item["status"] for item in manifest["collections"]}
         assert statuses["system-summary"] == "success"
+        assert statuses["prometheus-node-exporter"] == "skipped"
         assert statuses["journal-system"] == "skipped"
         assert statuses[f"file:{source.as_posix()}"] == "success"
