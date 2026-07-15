@@ -35,6 +35,7 @@ def _time_range(hours: int = 1) -> TimeRange:
 
 
 def _matrix_response() -> bytes:
+    start_timestamp = datetime.fromisoformat("2026-07-15T10:00:00+09:00").timestamp()
     return json.dumps(
         {
             "status": "success",
@@ -43,7 +44,7 @@ def _matrix_response() -> bytes:
                 "result": [
                     {
                         "metric": {"instance": "target-01:9100", "job": "node-exporter"},
-                        "values": [[1752541200, "10.5"], [1752541260, "11.5"]],
+                        "values": [[start_timestamp, "10.5"], [start_timestamp + 60, "11.5"]],
                     }
                 ],
             },
@@ -76,16 +77,22 @@ def test_collects_three_range_queries_as_json_and_csv(tmp_path: Path, monkeypatc
     assert all('instance="target-01:9100"' in query for query in queries)
     assert any("[5m]" in query for query in queries)
 
-    document = json.loads((tmp_path / "metrics/prometheus/metrics.json").read_text(encoding="utf-8"))
-    assert [record["status"] for record in document["queries"]] == ["success"] * 3
+    metric_names = {"cpu_usage_percent", "memory_usage_percent", "load_average_1m"}
+    for metric_name in metric_names:
+        document = json.loads(
+            (tmp_path / f"metrics/prometheus/{metric_name}.json").read_text(encoding="utf-8")
+        )
+        assert document["queries"][0]["status"] == "success"
+        assert document["queries"][0]["response"]["data"]["result"][0]["values"] == [
+            ["2026-07-15 10:00:00", "10.5"],
+            ["2026-07-15 10:01:00", "11.5"],
+        ]
+    assert not (tmp_path / "metrics/prometheus/metrics.json").exists()
     with (tmp_path / "metrics/prometheus/metrics.csv").open(encoding="utf-8", newline="") as csv_file:
         rows = list(csv.DictReader(csv_file))
     assert len(rows) == 6
-    assert {row["metric"] for row in rows} == {
-        "cpu_usage_percent",
-        "memory_usage_percent",
-        "load_average_1m",
-    }
+    assert {row["metric"] for row in rows} == metric_names
+    assert {row["timestamp"] for row in rows} == {"2026-07-15 10:00:00", "2026-07-15 10:01:00"}
 
 
 def test_records_partial_results(tmp_path: Path) -> None:
@@ -102,8 +109,13 @@ def test_records_partial_results(tmp_path: Path) -> None:
     result = collect_prometheus(_config(), _time_range(), tmp_path, transport=fake_transport)
 
     assert result.status == "partial"
-    document = json.loads((tmp_path / "metrics/prometheus/metrics.json").read_text(encoding="utf-8"))
-    assert [record["status"] for record in document["queries"]] == ["failed", "skipped", "success"]
+    statuses = []
+    for metric_name in ("cpu_usage_percent", "memory_usage_percent", "load_average_1m"):
+        document = json.loads(
+            (tmp_path / f"metrics/prometheus/{metric_name}.json").read_text(encoding="utf-8")
+        )
+        statuses.append(document["queries"][0]["status"])
+    assert statuses == ["failed", "skipped", "success"]
 
 
 def test_rejects_excessive_point_count_without_network(tmp_path: Path) -> None:

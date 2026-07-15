@@ -7,6 +7,7 @@ import json
 import os
 import ssl
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -122,6 +123,21 @@ def _csv_rows(metric_name: str, payload: dict[str, Any]) -> list[dict[str, str]]
     return rows
 
 
+def _format_response_timestamps(payload: dict[str, Any], time_range: TimeRange) -> None:
+    for series in payload["data"]["result"]:
+        if not isinstance(series, dict) or not isinstance(series.get("values"), list):
+            continue
+        for sample in series["values"]:
+            if not isinstance(sample, list) or len(sample) != 2:
+                continue
+            try:
+                sample[0] = datetime.fromtimestamp(float(sample[0]), tz=time_range.start.tzinfo).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+            except (TypeError, ValueError, OSError, OverflowError):
+                continue
+
+
 def collect_prometheus(
     config: PrometheusConfig,
     time_range: TimeRange,
@@ -161,6 +177,7 @@ def collect_prometheus(
             query_records.append({"name": name, "query": query, "status": "failed", "reason": error})
             continue
         assert payload is not None
+        _format_response_timestamps(payload, time_range)
         rows = _csv_rows(name, payload)
         if not rows:
             query_records.append(
@@ -170,31 +187,34 @@ def collect_prometheus(
         csv_rows.extend(rows)
         query_records.append({"name": name, "query": query, "status": "success", "response": payload})
 
-    relative_json = Path("metrics/prometheus/metrics.json")
+    relative_directory = Path("metrics/prometheus")
     relative_csv = Path("metrics/prometheus/metrics.csv")
-    json_path = staging_directory / relative_json
+    output_directory = staging_directory / relative_directory
     csv_path = staging_directory / relative_csv
-    document = {
-        "schema_version": "1.0",
-        "instance": config.instance,
-        "requested_time_range": {
-            "start": time_range.start.isoformat(),
-            "end": time_range.end.isoformat(),
-            "step_seconds": config.step_seconds,
-            "rate_interval": config.rate_interval,
-        },
-        "queries": query_records,
-    }
 
     try:
-        json_path.parent.mkdir(parents=True, exist_ok=True)
-        json_path.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        output_directory.mkdir(parents=True, exist_ok=True)
+        for record in query_records:
+            document = {
+                "schema_version": "1.0",
+                "instance": config.instance,
+                "requested_time_range": {
+                    "start": time_range.start.isoformat(),
+                    "end": time_range.end.isoformat(),
+                    "step_seconds": config.step_seconds,
+                    "rate_interval": config.rate_interval,
+                },
+                "queries": [record],
+            }
+            json_path = output_directory / f"{record['name']}.json"
+            json_path.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         with csv_path.open("w", encoding="utf-8", newline="") as csv_file:
             writer = csv.DictWriter(csv_file, fieldnames=["metric", "timestamp", "value", "labels"])
             writer.writeheader()
             writer.writerows(csv_rows)
     except OSError as exc:
-        json_path.unlink(missing_ok=True)
+        for path in output_directory.glob("*.json"):
+            path.unlink(missing_ok=True)
         csv_path.unlink(missing_ok=True)
         return CollectionResult("prometheus-node-exporter", "failed", reason=str(exc))
 
@@ -214,6 +234,6 @@ def collect_prometheus(
     return CollectionResult(
         "prometheus-node-exporter",
         status,
-        output=relative_json.as_posix(),
+        output=relative_directory.as_posix(),
         reason=reason,
     )

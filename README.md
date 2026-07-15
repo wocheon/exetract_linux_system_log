@@ -133,13 +133,15 @@ archive 내부에는 다음 서버 정보 파일이 기본으로 포함됩니다
 
 ```text
 metadata/system-summary.txt
-metrics/prometheus/metrics.json
+metrics/prometheus/cpu_usage_percent.json
+metrics/prometheus/memory_usage_percent.json
+metrics/prometheus/load_average_1m.json
 metrics/prometheus/metrics.csv
 ```
 
 이 파일에는 OS와 kernel, CPU·메모리 사양, 디스크 사용량, CPU 및 메모리 기준 상위 15개 프로세스가 들어갑니다. 프로세스 command line과 사용자명은 수집하지 않습니다. 서버 정보는 지정한 로그 시간대의 과거 값이 아니라 수집기 실행 시점의 스냅샷이며, 일부 명령을 사용할 수 없으면 가능한 내용은 보존하고 manifest 상태를 `partial`로 기록합니다.
 
-Prometheus가 활성화되면 CPU 사용률, 메모리 사용률, load average 1분 값을 로그와 동일한 `start`·`end` 범위로 수집합니다. `metrics.json`은 query와 API 응답을 보존하고, `metrics.csv`는 분석하기 쉬운 `metric,timestamp,value,labels` 형식입니다. CPU의 `rate(...[5m])` 값은 각 출력 시각 직전 5분 sample을 사용하므로 시작 시각의 계산에 그 이전 sample이 포함될 수 있습니다.
+Prometheus가 활성화되면 CPU 사용률, 메모리 사용률, load average 1분 값을 로그와 동일한 `start`·`end` 범위로 수집합니다. JSON은 메트릭별 파일로 나뉘지만 기존 query와 API 응답 구조를 유지하며, sample의 epoch timestamp만 요청 시간대 기준 `YYYY-MM-DD HH:MM:SS`로 표시합니다. `metrics.csv`도 같은 시간 형식의 `metric,timestamp,value,labels` 구조입니다. CPU의 `rate(...[5m])` 값은 각 출력 시각 직전 5분 sample을 사용하므로 시작 시각의 계산에 그 이전 sample이 포함될 수 있습니다.
 
 checksum 검증:
 

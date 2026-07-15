@@ -579,14 +579,19 @@ node_pressure_io_waiting_seconds_total
 * CSV
 * Prometheus API 원본 응답
 
-분석 편의성을 위해 정규화된 CSV와 원본 JSON을 함께 저장하는 방식을 권장한다.
+분석 편의성을 위해 정규화된 CSV와 Prometheus API 응답 구조를 유지한 JSON을 함께 저장한다.
 
 현재 출력:
 
 ```text
-metrics/prometheus/metrics.json
+metrics/prometheus/cpu_usage_percent.json
+metrics/prometheus/memory_usage_percent.json
+metrics/prometheus/load_average_1m.json
 metrics/prometheus/metrics.csv
 ```
+
+JSON은 메트릭별로 분리하되 query와 Prometheus API 응답 구조를 유지한다.
+각 sample의 epoch timestamp는 요청 시간대 기준 `YYYY-MM-DD HH:MM:SS`로 변환한다.
 
 인증 token은 환경변수에서만 읽으며 JSON, CSV, manifest에 기록하지 않는다.
 point 수가 `max_points_per_query`를 초과하면 query를 실행하지 않고 `step_seconds` 증가를 안내한다.
@@ -745,7 +750,9 @@ incident-collection-20260715T100000-20260715T110000/
 │   └── login-history/
 ├── metrics/
 │   ├── prometheus/
-│   │   ├── metrics.json
+│   │   ├── cpu_usage_percent.json
+│   │   ├── memory_usage_percent.json
+│   │   ├── load_average_1m.json
 │   │   └── metrics.csv
 │   └── local/
 ├── cloud/
